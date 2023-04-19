@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>資料的滄海桑田 (I) - 概念飄移的來源與類型 | Boru Yang - About Data Science</title>
+<meta name="keywords" content="concept drift">
+<meta name="description" content="前言 多數 AI 開發專案都不可避免地遇到這樣的問題：機器學習模型進入到部署階段並且開始服務後，隨著時間推移，資料分布出現飄移的情況，導致模型準確度隨著時間下降，最終使得專案的預期目標無法達成。
+舉一個錯誤偵測模型應用於製造業的例子：假設有個模型的輸入為產品的生產歷程，輸出為該產品是否有瑕疵，即使這個模型在驗證集和測試集上都已經取得了符合要求的表現，等到模型開始上線運作之後，仍有許多因素可能使得資料的分布改變，例如機台隨著時間的損耗或者製造的原物料品質浮動等等，而這些因素都有可能讓模型表現漸漸不如預期，導致這個錯誤偵測模型的應用難以長久落地。
+這種情況一般稱作為概念飄移 (concept drift)，概念飄移描述資料的分布隨著時間變化，使得根據過去資料歸納出來的規則以及訓練出來的模型，難以適用在新搜集的資料，並且降低模型預測的準確率或是導致錯誤的決策。
+概念飄移對於機器學習模型的開發和部署帶來了非常大的挑戰。從模型開發的角度來說，假設訓練資料就已經存在概念飄移的情況，如何設計能夠適應資料分布不斷改變的模型，讓模型在訓練資料上的表現可以免於概念飄移的負面影響，甚至讓模型上線後也能自動地適應不同的資料分布，至今仍是活躍的研究議題。
+而從模型部署的角度來說，模型開發者必須在模型上線後持續地監控模型表現，然而如何判斷模型表現確實受到概念飄移的污染，以及如何進行模型重訓練以校正模型的準確度，這些議題在實務上也有許多不同的討論和做法。
+要解決以上的種種問題，必須要掌握概念飄移的幾個基本來源和類型。本文將從概念飄移的來源以及類型兩個角度，說明概念飄移呈現的不同形式。
+概念飄移的來源 本文以下使用二元分類作為例子進行說明，令 $X$ 為特徵的隨機變數，且 $y$ 為二元標籤的隨機變數，目標是要給定一組 $X$ 得到預測的 $y$。假設在 $t$ 時間下觀察到了特徵 $X$ 與標籤 $y$ 的聯合分布 $P_t(X,y)$，根據貝氏定理可以進一步得到 $P_t(X,y)=P_t(X)P_t(y|X)$。
+你現在也許已經開始混亂了，原本好好地要討論概念飄移，怎麼突然冒出了聯合分布 $P_t(X,y)$，又突然要把聯合分布進行拆解？這邊可以回過頭想一想，概念飄移要討論是「資料隨著時間變化」這件事情，而在二元分類的情境下，所擁有的資料正是 $X$ 與 $y$，這兩者的共同分布（也就是聯合分布）就是 $P(X,y)$。為了探討這個聯合分布在時間上的變化，又多了一個在 $t$ 時間下的假設，才會是最一開始提到的 $P_t(X,y)$。
+至於為何要將 $P_t(X,y)$ 進行拆解？是因為單從 $P_t(X,y)$ 這個式子本身會如何隨著時間變化難以看出端倪，拆解成 $P_t(X)$ 和 $P_t(y|X)$ 兩個部分後，才能進一步研究 $P_t(X,y)$ 變化背後的成因。$P_t(X)$ 可以理解為在 $t$ 時間下特徵資料 $X$ 的分布，而 $P_t(y|X)$ 可以理解為在 $t$ 時間下，給定了一組特徵之後二元標籤的分布。由於透過 $P_t(y|X)$ 可以觀察出不同的特徵對應到的二元標籤，故 $P_t(y|X)$ 也可以視為 $t$ 時間下二元標籤的決策界線 (decision boundary)。
+因此根據以上的拆解，當概念飄移發生，也就是 $P_t(X,y)\neq P_{t&#43;1}(X,y)$ 時，飄移可能的來源有以下三種。
+$P_t(X)\neq P_{t&#43;1}(X)$，代表在決策界線沒有改變的前提之下，特徵資料分布發生改變，這種飄移的特性在於只有模型輸入的分布改變，輸入和輸出間的關係則保持不變，因此對於模型表現的損害有限。又因決策界線沒有發生改變，這種來源的飄移又被稱作虛擬飄移 (virtual drift)，其他名稱包括資料飄移 (data drift) 以及共變量飄移 (covariate drift)。 下圖為虛擬飄移的示意圖，藍色的圓形和三角形代表 $t$ 時間之下的資料分布（特徵與二元標籤），藍色的線代表 $t$ 時間之下的決策界線，而紅色的點則代表 $t&#43;1$ 時間下產生變化之後的結果。從圖中可以看到，只要決策界線維持不變，即便特徵的分布出現偏移，模型仍能維持相同的表現水準。">
+<meta name="author" content="Boru Yang">
+<link rel="canonical" href="https://boruyang.github.io/blogs/concept_drift_01/">
+<link crossorigin="anonymous" href="/assets/css/stylesheet.3613efbd0b1772781e8f49935e973cae632a7f61471c05b17be155505ccf87b5.css" integrity="sha256-NhPvvQsXcngej0mTXpc8rmMqf2FHHAWxe&#43;FVUFzPh7U=" rel="preload stylesheet" as="style">
+<script defer crossorigin="anonymous" src="/assets/js/highlight.f413e19d0714851f6474e7ee9632408e58ac146fbdbe62747134bea2fa3415e0.js" integrity="sha256-9BPhnQcUhR9kdOfuljJAjlisFG&#43;9vmJ0cTS&#43;ovo0FeA="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<link rel="icon" href="https://boruyang.github.io/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://boruyang.github.io/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://boruyang.github.io/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://boruyang.github.io/apple-touch-icon.png">
+<link rel="mask-icon" href="https://boruyang.github.io/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<noscript>
+    <style>
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+    <style>
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --theme: rgb(29, 30, 32);
+                --entry: rgb(46, 46, 51);
+                --primary: rgb(218, 218, 219);
+                --secondary: rgb(155, 156, 157);
+                --tertiary: rgb(65, 66, 68);
+                --content: rgb(196, 196, 197);
+                --hljs-bg: rgb(46, 46, 51);
+                --code-bg: rgb(55, 56, 62);
+                --border: rgb(51, 51, 51);
+            }
+
+            .list {
+                background: var(--theme);
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-track {
+                background: 0 0;
+            }
+
+            .list:not(.dark)::-webkit-scrollbar-thumb {
+                border-color: var(--theme);
+            }
+        }
+
+    </style>
+</noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css" integrity="sha384-vKruj+a13U8yHIkAyGgK1J3ArTLzrFGBbBc0tDp4ad/EyewESeXE/Iv67Aj8gKZ0" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.js" integrity="sha384-PwRUT/YqbnEjkZO0zZxNqcxACrXe+j766U2amXcgMg5457rve2Y7I6ZJSm2A0mS4" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        renderMathInElement(document.body, {
+          
+          
+          delimiters: [
+              {left: '$$', right: '$$', display: true},
+              {left: '$', right: '$', display: false},
+              {left: '\\(', right: '\\)', display: false},
+              {left: '\\[', right: '\\]', display: true}
+          ],
+          
+          throwOnError : false
+        });
+    });
+</script>
+<meta property="og:title" content="資料的滄海桑田 (I) - 概念飄移的來源與類型" />
+<meta property="og:description" content="前言 多數 AI 開發專案都不可避免地遇到這樣的問題：機器學習模型進入到部署階段並且開始服務後，隨著時間推移，資料分布出現飄移的情況，導致模型準確度隨著時間下降，最終使得專案的預期目標無法達成。
+舉一個錯誤偵測模型應用於製造業的例子：假設有個模型的輸入為產品的生產歷程，輸出為該產品是否有瑕疵，即使這個模型在驗證集和測試集上都已經取得了符合要求的表現，等到模型開始上線運作之後，仍有許多因素可能使得資料的分布改變，例如機台隨著時間的損耗或者製造的原物料品質浮動等等，而這些因素都有可能讓模型表現漸漸不如預期，導致這個錯誤偵測模型的應用難以長久落地。
+這種情況一般稱作為概念飄移 (concept drift)，概念飄移描述資料的分布隨著時間變化，使得根據過去資料歸納出來的規則以及訓練出來的模型，難以適用在新搜集的資料，並且降低模型預測的準確率或是導致錯誤的決策。
+概念飄移對於機器學習模型的開發和部署帶來了非常大的挑戰。從模型開發的角度來說，假設訓練資料就已經存在概念飄移的情況，如何設計能夠適應資料分布不斷改變的模型，讓模型在訓練資料上的表現可以免於概念飄移的負面影響，甚至讓模型上線後也能自動地適應不同的資料分布，至今仍是活躍的研究議題。
+而從模型部署的角度來說，模型開發者必須在模型上線後持續地監控模型表現，然而如何判斷模型表現確實受到概念飄移的污染，以及如何進行模型重訓練以校正模型的準確度，這些議題在實務上也有許多不同的討論和做法。
+要解決以上的種種問題，必須要掌握概念飄移的幾個基本來源和類型。本文將從概念飄移的來源以及類型兩個角度，說明概念飄移呈現的不同形式。
+概念飄移的來源 本文以下使用二元分類作為例子進行說明，令 $X$ 為特徵的隨機變數，且 $y$ 為二元標籤的隨機變數，目標是要給定一組 $X$ 得到預測的 $y$。假設在 $t$ 時間下觀察到了特徵 $X$ 與標籤 $y$ 的聯合分布 $P_t(X,y)$，根據貝氏定理可以進一步得到 $P_t(X,y)=P_t(X)P_t(y|X)$。
+你現在也許已經開始混亂了，原本好好地要討論概念飄移，怎麼突然冒出了聯合分布 $P_t(X,y)$，又突然要把聯合分布進行拆解？這邊可以回過頭想一想，概念飄移要討論是「資料隨著時間變化」這件事情，而在二元分類的情境下，所擁有的資料正是 $X$ 與 $y$，這兩者的共同分布（也就是聯合分布）就是 $P(X,y)$。為了探討這個聯合分布在時間上的變化，又多了一個在 $t$ 時間下的假設，才會是最一開始提到的 $P_t(X,y)$。
+至於為何要將 $P_t(X,y)$ 進行拆解？是因為單從 $P_t(X,y)$ 這個式子本身會如何隨著時間變化難以看出端倪，拆解成 $P_t(X)$ 和 $P_t(y|X)$ 兩個部分後，才能進一步研究 $P_t(X,y)$ 變化背後的成因。$P_t(X)$ 可以理解為在 $t$ 時間下特徵資料 $X$ 的分布，而 $P_t(y|X)$ 可以理解為在 $t$ 時間下，給定了一組特徵之後二元標籤的分布。由於透過 $P_t(y|X)$ 可以觀察出不同的特徵對應到的二元標籤，故 $P_t(y|X)$ 也可以視為 $t$ 時間下二元標籤的決策界線 (decision boundary)。
+因此根據以上的拆解，當概念飄移發生，也就是 $P_t(X,y)\neq P_{t&#43;1}(X,y)$ 時，飄移可能的來源有以下三種。
+$P_t(X)\neq P_{t&#43;1}(X)$，代表在決策界線沒有改變的前提之下，特徵資料分布發生改變，這種飄移的特性在於只有模型輸入的分布改變，輸入和輸出間的關係則保持不變，因此對於模型表現的損害有限。又因決策界線沒有發生改變，這種來源的飄移又被稱作虛擬飄移 (virtual drift)，其他名稱包括資料飄移 (data drift) 以及共變量飄移 (covariate drift)。 下圖為虛擬飄移的示意圖，藍色的圓形和三角形代表 $t$ 時間之下的資料分布（特徵與二元標籤），藍色的線代表 $t$ 時間之下的決策界線，而紅色的點則代表 $t&#43;1$ 時間下產生變化之後的結果。從圖中可以看到，只要決策界線維持不變，即便特徵的分布出現偏移，模型仍能維持相同的表現水準。" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://boruyang.github.io/blogs/concept_drift_01/" /><meta property="article:section" content="blogs" />
+<meta property="article:published_time" content="2023-04-08T00:00:00+00:00" />
+<meta property="article:modified_time" content="2023-04-08T00:00:00+00:00" />
+
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="資料的滄海桑田 (I) - 概念飄移的來源與類型"/>
+<meta name="twitter:description" content="前言 多數 AI 開發專案都不可避免地遇到這樣的問題：機器學習模型進入到部署階段並且開始服務後，隨著時間推移，資料分布出現飄移的情況，導致模型準確度隨著時間下降，最終使得專案的預期目標無法達成。
+舉一個錯誤偵測模型應用於製造業的例子：假設有個模型的輸入為產品的生產歷程，輸出為該產品是否有瑕疵，即使這個模型在驗證集和測試集上都已經取得了符合要求的表現，等到模型開始上線運作之後，仍有許多因素可能使得資料的分布改變，例如機台隨著時間的損耗或者製造的原物料品質浮動等等，而這些因素都有可能讓模型表現漸漸不如預期，導致這個錯誤偵測模型的應用難以長久落地。
+這種情況一般稱作為概念飄移 (concept drift)，概念飄移描述資料的分布隨著時間變化，使得根據過去資料歸納出來的規則以及訓練出來的模型，難以適用在新搜集的資料，並且降低模型預測的準確率或是導致錯誤的決策。
+概念飄移對於機器學習模型的開發和部署帶來了非常大的挑戰。從模型開發的角度來說，假設訓練資料就已經存在概念飄移的情況，如何設計能夠適應資料分布不斷改變的模型，讓模型在訓練資料上的表現可以免於概念飄移的負面影響，甚至讓模型上線後也能自動地適應不同的資料分布，至今仍是活躍的研究議題。
+而從模型部署的角度來說，模型開發者必須在模型上線後持續地監控模型表現，然而如何判斷模型表現確實受到概念飄移的污染，以及如何進行模型重訓練以校正模型的準確度，這些議題在實務上也有許多不同的討論和做法。
+要解決以上的種種問題，必須要掌握概念飄移的幾個基本來源和類型。本文將從概念飄移的來源以及類型兩個角度，說明概念飄移呈現的不同形式。
+概念飄移的來源 本文以下使用二元分類作為例子進行說明，令 $X$ 為特徵的隨機變數，且 $y$ 為二元標籤的隨機變數，目標是要給定一組 $X$ 得到預測的 $y$。假設在 $t$ 時間下觀察到了特徵 $X$ 與標籤 $y$ 的聯合分布 $P_t(X,y)$，根據貝氏定理可以進一步得到 $P_t(X,y)=P_t(X)P_t(y|X)$。
+你現在也許已經開始混亂了，原本好好地要討論概念飄移，怎麼突然冒出了聯合分布 $P_t(X,y)$，又突然要把聯合分布進行拆解？這邊可以回過頭想一想，概念飄移要討論是「資料隨著時間變化」這件事情，而在二元分類的情境下，所擁有的資料正是 $X$ 與 $y$，這兩者的共同分布（也就是聯合分布）就是 $P(X,y)$。為了探討這個聯合分布在時間上的變化，又多了一個在 $t$ 時間下的假設，才會是最一開始提到的 $P_t(X,y)$。
+至於為何要將 $P_t(X,y)$ 進行拆解？是因為單從 $P_t(X,y)$ 這個式子本身會如何隨著時間變化難以看出端倪，拆解成 $P_t(X)$ 和 $P_t(y|X)$ 兩個部分後，才能進一步研究 $P_t(X,y)$ 變化背後的成因。$P_t(X)$ 可以理解為在 $t$ 時間下特徵資料 $X$ 的分布，而 $P_t(y|X)$ 可以理解為在 $t$ 時間下，給定了一組特徵之後二元標籤的分布。由於透過 $P_t(y|X)$ 可以觀察出不同的特徵對應到的二元標籤，故 $P_t(y|X)$ 也可以視為 $t$ 時間下二元標籤的決策界線 (decision boundary)。
+因此根據以上的拆解，當概念飄移發生，也就是 $P_t(X,y)\neq P_{t&#43;1}(X,y)$ 時，飄移可能的來源有以下三種。
+$P_t(X)\neq P_{t&#43;1}(X)$，代表在決策界線沒有改變的前提之下，特徵資料分布發生改變，這種飄移的特性在於只有模型輸入的分布改變，輸入和輸出間的關係則保持不變，因此對於模型表現的損害有限。又因決策界線沒有發生改變，這種來源的飄移又被稱作虛擬飄移 (virtual drift)，其他名稱包括資料飄移 (data drift) 以及共變量飄移 (covariate drift)。 下圖為虛擬飄移的示意圖，藍色的圓形和三角形代表 $t$ 時間之下的資料分布（特徵與二元標籤），藍色的線代表 $t$ 時間之下的決策界線，而紅色的點則代表 $t&#43;1$ 時間下產生變化之後的結果。從圖中可以看到，只要決策界線維持不變，即便特徵的分布出現偏移，模型仍能維持相同的表現水準。"/>
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Blogs",
+      "item": "https://boruyang.github.io/blogs/"
+    }, 
+    {
+      "@type": "ListItem",
+      "position":  2 ,
+      "name": "資料的滄海桑田 (I) - 概念飄移的來源與類型",
+      "item": "https://boruyang.github.io/blogs/concept_drift_01/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "資料的滄海桑田 (I) - 概念飄移的來源與類型",
+  "name": "資料的滄海桑田 (I) - 概念飄移的來源與類型",
+  "description": "前言 多數 AI 開發專案都不可避免地遇到這樣的問題：機器學習模型進入到部署階段並且開始服務後，隨著時間推移，資料分布出現飄移的情況，導致模型準確度隨著時間下降，最終使得專案的預期目標無法達成。\n舉一個錯誤偵測模型應用於製造業的例子：假設有個模型的輸入為產品的生產歷程，輸出為該產品是否有瑕疵，即使這個模型在驗證集和測試集上都已經取得了符合要求的表現，等到模型開始上線運作之後，仍有許多因素可能使得資料的分布改變，例如機台隨著時間的損耗或者製造的原物料品質浮動等等，而這些因素都有可能讓模型表現漸漸不如預期，導致這個錯誤偵測模型的應用難以長久落地。\n這種情況一般稱作為概念飄移 (concept drift)，概念飄移描述資料的分布隨著時間變化，使得根據過去資料歸納出來的規則以及訓練出來的模型，難以適用在新搜集的資料，並且降低模型預測的準確率或是導致錯誤的決策。\n概念飄移對於機器學習模型的開發和部署帶來了非常大的挑戰。從模型開發的角度來說，假設訓練資料就已經存在概念飄移的情況，如何設計能夠適應資料分布不斷改變的模型，讓模型在訓練資料上的表現可以免於概念飄移的負面影響，甚至讓模型上線後也能自動地適應不同的資料分布，至今仍是活躍的研究議題。\n而從模型部署的角度來說，模型開發者必須在模型上線後持續地監控模型表現，然而如何判斷模型表現確實受到概念飄移的污染，以及如何進行模型重訓練以校正模型的準確度，這些議題在實務上也有許多不同的討論和做法。\n要解決以上的種種問題，必須要掌握概念飄移的幾個基本來源和類型。本文將從概念飄移的來源以及類型兩個角度，說明概念飄移呈現的不同形式。\n概念飄移的來源 本文以下使用二元分類作為例子進行說明，令 $X$ 為特徵的隨機變數，且 $y$ 為二元標籤的隨機變數，目標是要給定一組 $X$ 得到預測的 $y$。假設在 $t$ 時間下觀察到了特徵 $X$ 與標籤 $y$ 的聯合分布 $P_t(X,y)$，根據貝氏定理可以進一步得到 $P_t(X,y)=P_t(X)P_t(y|X)$。\n你現在也許已經開始混亂了，原本好好地要討論概念飄移，怎麼突然冒出了聯合分布 $P_t(X,y)$，又突然要把聯合分布進行拆解？這邊可以回過頭想一想，概念飄移要討論是「資料隨著時間變化」這件事情，而在二元分類的情境下，所擁有的資料正是 $X$ 與 $y$，這兩者的共同分布（也就是聯合分布）就是 $P(X,y)$。為了探討這個聯合分布在時間上的變化，又多了一個在 $t$ 時間下的假設，才會是最一開始提到的 $P_t(X,y)$。\n至於為何要將 $P_t(X,y)$ 進行拆解？是因為單從 $P_t(X,y)$ 這個式子本身會如何隨著時間變化難以看出端倪，拆解成 $P_t(X)$ 和 $P_t(y|X)$ 兩個部分後，才能進一步研究 $P_t(X,y)$ 變化背後的成因。$P_t(X)$ 可以理解為在 $t$ 時間下特徵資料 $X$ 的分布，而 $P_t(y|X)$ 可以理解為在 $t$ 時間下，給定了一組特徵之後二元標籤的分布。由於透過 $P_t(y|X)$ 可以觀察出不同的特徵對應到的二元標籤，故 $P_t(y|X)$ 也可以視為 $t$ 時間下二元標籤的決策界線 (decision boundary)。\n因此根據以上的拆解，當概念飄移發生，也就是 $P_t(X,y)\\neq P_{t+1}(X,y)$ 時，飄移可能的來源有以下三種。\n$P_t(X)\\neq P_{t+1}(X)$，代表在決策界線沒有改變的前提之下，特徵資料分布發生改變，這種飄移的特性在於只有模型輸入的分布改變，輸入和輸出間的關係則保持不變，因此對於模型表現的損害有限。又因決策界線沒有發生改變，這種來源的飄移又被稱作虛擬飄移 (virtual drift)，其他名稱包括資料飄移 (data drift) 以及共變量飄移 (covariate drift)。 下圖為虛擬飄移的示意圖，藍色的圓形和三角形代表 $t$ 時間之下的資料分布（特徵與二元標籤），藍色的線代表 $t$ 時間之下的決策界線，而紅色的點則代表 $t+1$ 時間下產生變化之後的結果。從圖中可以看到，只要決策界線維持不變，即便特徵的分布出現偏移，模型仍能維持相同的表現水準。",
+  "keywords": [
+    "concept drift"
+  ],
+  "articleBody": "前言 多數 AI 開發專案都不可避免地遇到這樣的問題：機器學習模型進入到部署階段並且開始服務後，隨著時間推移，資料分布出現飄移的情況，導致模型準確度隨著時間下降，最終使得專案的預期目標無法達成。\n舉一個錯誤偵測模型應用於製造業的例子：假設有個模型的輸入為產品的生產歷程，輸出為該產品是否有瑕疵，即使這個模型在驗證集和測試集上都已經取得了符合要求的表現，等到模型開始上線運作之後，仍有許多因素可能使得資料的分布改變，例如機台隨著時間的損耗或者製造的原物料品質浮動等等，而這些因素都有可能讓模型表現漸漸不如預期，導致這個錯誤偵測模型的應用難以長久落地。\n這種情況一般稱作為概念飄移 (concept drift)，概念飄移描述資料的分布隨著時間變化，使得根據過去資料歸納出來的規則以及訓練出來的模型，難以適用在新搜集的資料，並且降低模型預測的準確率或是導致錯誤的決策。\n概念飄移對於機器學習模型的開發和部署帶來了非常大的挑戰。從模型開發的角度來說，假設訓練資料就已經存在概念飄移的情況，如何設計能夠適應資料分布不斷改變的模型，讓模型在訓練資料上的表現可以免於概念飄移的負面影響，甚至讓模型上線後也能自動地適應不同的資料分布，至今仍是活躍的研究議題。\n而從模型部署的角度來說，模型開發者必須在模型上線後持續地監控模型表現，然而如何判斷模型表現確實受到概念飄移的污染，以及如何進行模型重訓練以校正模型的準確度，這些議題在實務上也有許多不同的討論和做法。\n要解決以上的種種問題，必須要掌握概念飄移的幾個基本來源和類型。本文將從概念飄移的來源以及類型兩個角度，說明概念飄移呈現的不同形式。\n概念飄移的來源 本文以下使用二元分類作為例子進行說明，令 $X$ 為特徵的隨機變數，且 $y$ 為二元標籤的隨機變數，目標是要給定一組 $X$ 得到預測的 $y$。假設在 $t$ 時間下觀察到了特徵 $X$ 與標籤 $y$ 的聯合分布 $P_t(X,y)$，根據貝氏定理可以進一步得到 $P_t(X,y)=P_t(X)P_t(y|X)$。\n你現在也許已經開始混亂了，原本好好地要討論概念飄移，怎麼突然冒出了聯合分布 $P_t(X,y)$，又突然要把聯合分布進行拆解？這邊可以回過頭想一想，概念飄移要討論是「資料隨著時間變化」這件事情，而在二元分類的情境下，所擁有的資料正是 $X$ 與 $y$，這兩者的共同分布（也就是聯合分布）就是 $P(X,y)$。為了探討這個聯合分布在時間上的變化，又多了一個在 $t$ 時間下的假設，才會是最一開始提到的 $P_t(X,y)$。\n至於為何要將 $P_t(X,y)$ 進行拆解？是因為單從 $P_t(X,y)$ 這個式子本身會如何隨著時間變化難以看出端倪，拆解成 $P_t(X)$ 和 $P_t(y|X)$ 兩個部分後，才能進一步研究 $P_t(X,y)$ 變化背後的成因。$P_t(X)$ 可以理解為在 $t$ 時間下特徵資料 $X$ 的分布，而 $P_t(y|X)$ 可以理解為在 $t$ 時間下，給定了一組特徵之後二元標籤的分布。由於透過 $P_t(y|X)$ 可以觀察出不同的特徵對應到的二元標籤，故 $P_t(y|X)$ 也可以視為 $t$ 時間下二元標籤的決策界線 (decision boundary)。\n因此根據以上的拆解，當概念飄移發生，也就是 $P_t(X,y)\\neq P_{t+1}(X,y)$ 時，飄移可能的來源有以下三種。\n$P_t(X)\\neq P_{t+1}(X)$，代表在決策界線沒有改變的前提之下，特徵資料分布發生改變，這種飄移的特性在於只有模型輸入的分布改變，輸入和輸出間的關係則保持不變，因此對於模型表現的損害有限。又因決策界線沒有發生改變，這種來源的飄移又被稱作虛擬飄移 (virtual drift)，其他名稱包括資料飄移 (data drift) 以及共變量飄移 (covariate drift)。 下圖為虛擬飄移的示意圖，藍色的圓形和三角形代表 $t$ 時間之下的資料分布（特徵與二元標籤），藍色的線代表 $t$ 時間之下的決策界線，而紅色的點則代表 $t+1$ 時間下產生變化之後的結果。從圖中可以看到，只要決策界線維持不變，即便特徵的分布出現偏移，模型仍能維持相同的表現水準。\n$P_t(y|X)\\neq P_{t+1}(y|X)$，代表特徵資料分布本身沒有改變，而是決策界線發生變動，這種飄移由於輸入和輸出間的關係發生了改變，在 $t$ 時間訓練的模型無法適用在 $t+1$ 時間的資料，導致模型準確度的下降。 下圖為第二類飄移來源的示意圖，同樣地藍色的點與線為 $t$ 時間之下的資料分布以及決策界線，紅色的點與線則為在 $t+1$ 時間下變化的結果。從圖中可以發現雖然特徵分布本身沒有改變，也就是資料仍散布在相同的區域，但是由於決策界線發生改變（紅色的線），使得在 $t$ 時間下部分的圓形的區域到了 $t+1$ 時間後變為三角形，反之亦然，此時若使用舊有的模型所學習到的決策界線（藍色的線）進行分類，就會出現準確率下降的情況。\n$P_t(X)\\neq P_{t+1}(X)$ 並且 $P_t(y|X)\\neq P_{t+1}(y|X)$，代表特徵資料分布和決策界線都發生改變，這類飄移融合了前面兩種飄移的來源，輸入資料的分布以及輸入和輸出間的關係一起改變。一般在沒有特定指涉的情況下，概念飄移所指的是第三種情境。 下圖為概念飄移的示意圖，可以看到綜合了前面兩種來源的飄移形式，在圖上呈現的同樣也是舊有的模型無法對於新的時間點的資料作出準確的推論。\n雖然此處將資料改變的來源比較細緻地分成三個部分討論，不過在一般的討論中，最常見的分類是資料飄移以及概念飄移兩種（也就是先前所列的第一種與第三種），以凸顯並非所有的資料分布改變都會影響模型輸入和輸出的關係。\n此外，在釐清飄移的不同來源之後，就能理解不同的測量概念飄移的演算法，所能夠捕捉到的飄移來源，這部分之後會再進一步分享！\n概念飄移的類型 討論完了概念飄移的來源之後，接下來說明概念飄移可能呈現的類型，一般而言可以分成四種，分別為突發性飄移 (sudden drift)、增強性飄移 (incremental drift)、漸進性飄移 (gradual drift) 以及再發性飄移 (reocurring drift)。\n突發性飄移為資料分布發生快速且強烈的變化，增強性飄移描述資料改變的過程經歷某些中間狀態，最後轉變為不同的資料分布。漸進性飄移強調資料改變的過程會在兩種不同的狀態之間震盪，最終穩定趨向不同的資料分布。再發性飄移說明資料不斷地在已發生過的狀態之間重複出現。不同概念飄移的類型借用論文 A Survey on Concept Drift Adaptation 的圖，如下所示。\n在不同的應用情境之下經常有不同的飄移類型，而具體所屬的類型需要透過資料分析或者領域知識 (domain knowledge) 的支持才能夠決定，在確定飄移的形式之後，相關的飄移偵測或者學習演算法的設計，都會圍繞在這個預先給定的飄移類型之下發展。換句話說，飄移類型和演算法之間有一定程度的相依，沒有一種應對概念飄移的演算法可以完美處理不同類型的飄移，舉例來說，假設已經知道在某個應用情境之中的概念飄移類型為漸進性飄移，那些專門用於突發性飄移的演算法在這個情境下就只能達到有限的效果。\n結語 本文在概念上說明了概念飄移的來源以及類型，雖然在分析的過程中沒有涉及太多的數學或演算法，然而未來討論到如何測量概念飄移以及應對概念飄移的方法時，模型和演算法的設計都會和飄移的來源以及類型有非常密切的相關。\n舉個例子來說，假設在一個資料會發生突發性飄移的情境中，使用定期模型重訓練的策略來應對資料分布的改變，就有可能出現模型表現已經大幅下降，卻仍然因為尚未到重訓練的時間點，導致這樣脫離常軌的模型無法被修正而繼續服務。如果能夠對飄移的類型有所掌握，並在模型的設計或者部署的機制上做出相對應的調整，例如設定一個給定的閾值，在模型的表現偏差到了一定的程度時，便立即重啟模型重訓練的機制，如此就能避免過時模型持續服務的情況。\n瞭解概念飄移的來源、類型以及這些觀念的重要性之後，在下一篇文章將接著討論，如何判斷概念飄移是否存在，或者換句話說，如何測量概念飄移？\n參考資料：\nGama, J., Žliobaitė, I., Bifet, A., Pechenizkiy, M., \u0026 Bouchachia, A. (2014). A survey on concept drift adaptation. ACM Computing Surveys (CSUR), 46(4), 1-37.\nLu, J., Liu, A., Dong, F., Gu, F., Gama, J., \u0026 Zhang, G. (2018). Learning under concept drift: A review. IEEE Transactions on Knowledge and Data Engineering, 31(12), 2346-2363.\n如果你對這篇文章的內容有任何的想法或者指教，都歡迎來信和我討論~\n下集待續：資料的滄海桑田 (II) - 概念飄移的測量\n",
+  "wordCount" : "194",
+  "inLanguage": "en",
+  "datePublished": "2023-04-08T00:00:00Z",
+  "dateModified": "2023-04-08T00:00:00Z",
+  "author":{
+    "@type": "Person",
+    "name": "Boru Yang"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://boruyang.github.io/blogs/concept_drift_01/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Boru Yang - About Data Science",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://boruyang.github.io/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://boruyang.github.io/" accesskey="h" title="BoRu Yang - About Data Science (Alt + H)">
+                <img src="https://boruyang.github.io/img/icon.png" alt="" aria-label="logo"
+                    height="35">BoRu Yang - About Data Science</a>
+            <div class="logo-switches">
+                <button id="theme-toggle" accesskey="t" title="(Alt + T)">
+                    <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <ul id="menu">
+            <li>
+                <a href="https://boruyang.github.io/blogs/" title="Blogs">
+                    <span>Blogs</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://boruyang.github.io/tags/" title="Tags">
+                    <span>Tags</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <div class="breadcrumbs"><a href="https://boruyang.github.io/">Home</a>&nbsp;»&nbsp;<a href="https://boruyang.github.io/blogs/">Blogs</a></div>
+    <h1 class="post-title">
+      資料的滄海桑田 (I) - 概念飄移的來源與類型
+    </h1>
+    <div class="post-meta"><span title='2023-04-08 00:00:00 +0000 UTC'>April 8, 2023</span>&nbsp;·&nbsp;Boru Yang
+
+</div>
+  </header> <div class="toc">
+    <details >
+        <summary accesskey="c" title="(Alt + C)">
+            <span class="details">Table of Contents</span>
+        </summary>
+
+        <div class="inner"><ul>
+                <li>
+                    <a href="#%e5%89%8d%e8%a8%80" aria-label="前言">前言</a></li>
+                <li>
+                    <a href="#%e6%a6%82%e5%bf%b5%e9%a3%84%e7%a7%bb%e7%9a%84%e4%be%86%e6%ba%90" aria-label="概念飄移的來源">概念飄移的來源</a></li>
+                <li>
+                    <a href="#%e6%a6%82%e5%bf%b5%e9%a3%84%e7%a7%bb%e7%9a%84%e9%a1%9e%e5%9e%8b" aria-label="概念飄移的類型">概念飄移的類型</a></li>
+                <li>
+                    <a href="#%e7%b5%90%e8%aa%9e" aria-label="結語">結語</a>
+                </li>
+            </ul>
+        </div>
+    </details>
+</div>
+
+  <div class="post-content"><h2 id="前言">前言<a hidden class="anchor" aria-hidden="true" href="#前言">#</a></h2>
+<p>多數 AI 開發專案都不可避免地遇到這樣的問題：機器學習模型進入到部署階段並且開始服務後，隨著時間推移，資料分布出現飄移的情況，導致模型準確度隨著時間下降，最終使得專案的預期目標無法達成。</p>
+<p>舉一個錯誤偵測模型應用於製造業的例子：假設有個模型的輸入為產品的生產歷程，輸出為該產品是否有瑕疵，即使這個模型在驗證集和測試集上都已經取得了符合要求的表現，等到模型開始上線運作之後，仍有許多因素可能使得資料的分布改變，例如機台隨著時間的損耗或者製造的原物料品質浮動等等，而這些因素都有可能讓模型表現漸漸不如預期，導致這個錯誤偵測模型的應用難以長久落地。</p>
+<p>這種情況一般稱作為概念飄移 (concept drift)，概念飄移描述資料的分布隨著時間變化，使得根據過去資料歸納出來的規則以及訓練出來的模型，難以適用在新搜集的資料，並且降低模型預測的準確率或是導致錯誤的決策。</p>
+<p>概念飄移對於機器學習模型的開發和部署帶來了非常大的挑戰。從模型開發的角度來說，假設訓練資料就已經存在概念飄移的情況，如何設計能夠適應資料分布不斷改變的模型，讓模型在訓練資料上的表現可以免於概念飄移的負面影響，甚至讓模型上線後也能自動地適應不同的資料分布，至今仍是活躍的研究議題。</p>
+<p>而從模型部署的角度來說，模型開發者必須在模型上線後持續地監控模型表現，然而如何判斷模型表現確實受到概念飄移的污染，以及如何進行模型重訓練以校正模型的準確度，這些議題在實務上也有許多不同的討論和做法。</p>
+<p>要解決以上的種種問題，必須要掌握概念飄移的幾個基本來源和類型。本文將從概念飄移的來源以及類型兩個角度，說明概念飄移呈現的不同形式。</p>
+<hr>
+<h2 id="概念飄移的來源">概念飄移的來源<a hidden class="anchor" aria-hidden="true" href="#概念飄移的來源">#</a></h2>
+<p>本文以下使用二元分類作為例子進行說明，令 $X$ 為特徵的隨機變數，且 $y$ 為二元標籤的隨機變數，目標是要給定一組 $X$ 得到預測的 $y$。假設在 $t$ 時間下觀察到了特徵 $X$ 與標籤 $y$ 的聯合分布 $P_t(X,y)$，根據貝氏定理可以進一步得到 $P_t(X,y)=P_t(X)P_t(y|X)$。</p>
+<p>你現在也許已經開始混亂了，原本好好地要討論概念飄移，怎麼突然冒出了聯合分布 $P_t(X,y)$，又突然要把聯合分布進行拆解？這邊可以回過頭想一想，概念飄移要討論是「資料隨著時間變化」這件事情，而在二元分類的情境下，所擁有的資料正是 $X$ 與 $y$，這兩者的共同分布（也就是聯合分布）就是 $P(X,y)$。為了探討這個聯合分布在時間上的變化，又多了一個在 $t$ 時間下的假設，才會是最一開始提到的 $P_t(X,y)$。</p>
+<p>至於為何要將 $P_t(X,y)$ 進行拆解？是因為單從 $P_t(X,y)$ 這個式子本身會如何隨著時間變化難以看出端倪，拆解成 $P_t(X)$ 和 $P_t(y|X)$ 兩個部分後，才能進一步研究 $P_t(X,y)$ 變化背後的成因。$P_t(X)$ 可以理解為在 $t$ 時間下特徵資料 $X$ 的分布，而 $P_t(y|X)$ 可以理解為在 $t$ 時間下，給定了一組特徵之後二元標籤的分布。由於透過 $P_t(y|X)$ 可以觀察出不同的特徵對應到的二元標籤，故 $P_t(y|X)$ 也可以視為 $t$ 時間下二元標籤的決策界線 (decision boundary)。</p>
+<p>因此根據以上的拆解，當概念飄移發生，也就是 $P_t(X,y)\neq P_{t+1}(X,y)$ 時，飄移可能的來源有以下三種。</p>
+<ol>
+<li>$P_t(X)\neq P_{t+1}(X)$，代表在決策界線沒有改變的前提之下，特徵資料分布發生改變，這種飄移的特性在於只有模型輸入的分布改變，輸入和輸出間的關係則保持不變，因此對於模型表現的損害有限。又因決策界線沒有發生改變，這種來源的飄移又被稱作虛擬飄移 (virtual drift)，其他名稱包括資料飄移 (data drift) 以及共變量飄移 (covariate drift)。</li>
+</ol>
+<p>下圖為虛擬飄移的示意圖，藍色的圓形和三角形代表 $t$ 時間之下的資料分布（特徵與二元標籤），藍色的線代表 $t$ 時間之下的決策界線，而紅色的點則代表 $t+1$ 時間下產生變化之後的結果。從圖中可以看到，只要決策界線維持不變，即便特徵的分布出現偏移，模型仍能維持相同的表現水準。</p>
+<p><img loading="lazy" src="/img/blogs/%e6%8a%95%e5%bd%b1%e7%89%871.png" alt="concept_drift_01_01.png"  />
+</p>
+<ol start="2">
+<li>$P_t(y|X)\neq P_{t+1}(y|X)$，代表特徵資料分布本身沒有改變，而是決策界線發生變動，這種飄移由於輸入和輸出間的關係發生了改變，在 $t$ 時間訓練的模型無法適用在 $t+1$ 時間的資料，導致模型準確度的下降。</li>
+</ol>
+<p>下圖為第二類飄移來源的示意圖，同樣地藍色的點與線為 $t$ 時間之下的資料分布以及決策界線，紅色的點與線則為在 $t+1$ 時間下變化的結果。從圖中可以發現雖然特徵分布本身沒有改變，也就是資料仍散布在相同的區域，但是由於決策界線發生改變（紅色的線），使得在 $t$ 時間下部分的圓形的區域到了 $t+1$ 時間後變為三角形，反之亦然，此時若使用舊有的模型所學習到的決策界線（藍色的線）進行分類，就會出現準確率下降的情況。</p>
+<p><img loading="lazy" src="/img/blogs/%e6%8a%95%e5%bd%b1%e7%89%872.png" alt="concept_drift_01_02.png"  />
+</p>
+<ol start="3">
+<li>$P_t(X)\neq P_{t+1}(X)$ 並且 $P_t(y|X)\neq P_{t+1}(y|X)$，代表特徵資料分布和決策界線都發生改變，這類飄移融合了前面兩種飄移的來源，輸入資料的分布以及輸入和輸出間的關係一起改變。一般在沒有特定指涉的情況下，概念飄移所指的是第三種情境。</li>
+</ol>
+<p>下圖為概念飄移的示意圖，可以看到綜合了前面兩種來源的飄移形式，在圖上呈現的同樣也是舊有的模型無法對於新的時間點的資料作出準確的推論。</p>
+<p><img loading="lazy" src="/img/blogs/%e6%8a%95%e5%bd%b1%e7%89%873.png" alt="concept_drift_01_03.png"  />
+</p>
+<p>雖然此處將資料改變的來源比較細緻地分成三個部分討論，不過在一般的討論中，最常見的分類是資料飄移以及概念飄移兩種（也就是先前所列的第一種與第三種），以凸顯並非所有的資料分布改變都會影響模型輸入和輸出的關係。</p>
+<p>此外，在釐清飄移的不同來源之後，就能理解不同的測量概念飄移的演算法，所能夠捕捉到的飄移來源，這部分之後會再進一步分享！</p>
+<hr>
+<h2 id="概念飄移的類型">概念飄移的類型<a hidden class="anchor" aria-hidden="true" href="#概念飄移的類型">#</a></h2>
+<p>討論完了概念飄移的來源之後，接下來說明概念飄移可能呈現的類型，一般而言可以分成四種，分別為突發性飄移 (sudden drift)、增強性飄移 (incremental drift)、漸進性飄移 (gradual drift) 以及再發性飄移 (reocurring drift)。</p>
+<p>突發性飄移為資料分布發生快速且強烈的變化，增強性飄移描述資料改變的過程經歷某些中間狀態，最後轉變為不同的資料分布。漸進性飄移強調資料改變的過程會在兩種不同的狀態之間震盪，最終穩定趨向不同的資料分布。再發性飄移說明資料不斷地在已發生過的狀態之間重複出現。不同概念飄移的類型借用論文 <a href="https://www.win.tue.nl/~mpechen/publications/pubs/Gama_ACMCS_AdaptationCD_accepted.pdf">A Survey on Concept Drift Adaptation</a> 的圖，如下所示。</p>
+<p><img loading="lazy" src="/img/blogs/concept_drift_01_04.png" alt="concept_drift_01_04.png"  />
+</p>
+<p>在不同的應用情境之下經常有不同的飄移類型，而具體所屬的類型需要透過資料分析或者領域知識 (domain knowledge) 的支持才能夠決定，在確定飄移的形式之後，相關的飄移偵測或者學習演算法的設計，都會圍繞在這個預先給定的飄移類型之下發展。換句話說，飄移類型和演算法之間有一定程度的相依，沒有一種應對概念飄移的演算法可以完美處理不同類型的飄移，舉例來說，假設已經知道在某個應用情境之中的概念飄移類型為漸進性飄移，那些專門用於突發性飄移的演算法在這個情境下就只能達到有限的效果。</p>
+<hr>
+<h2 id="結語">結語<a hidden class="anchor" aria-hidden="true" href="#結語">#</a></h2>
+<p>本文在概念上說明了概念飄移的來源以及類型，雖然在分析的過程中沒有涉及太多的數學或演算法，然而未來討論到如何測量概念飄移以及應對概念飄移的方法時，模型和演算法的設計都會和飄移的來源以及類型有非常密切的相關。</p>
+<p>舉個例子來說，假設在一個資料會發生突發性飄移的情境中，使用定期模型重訓練的策略來應對資料分布的改變，就有可能出現模型表現已經大幅下降，卻仍然因為尚未到重訓練的時間點，導致這樣脫離常軌的模型無法被修正而繼續服務。如果能夠對飄移的類型有所掌握，並在模型的設計或者部署的機制上做出相對應的調整，例如設定一個給定的閾值，在模型的表現偏差到了一定的程度時，便立即重啟模型重訓練的機制，如此就能避免過時模型持續服務的情況。</p>
+<p>瞭解概念飄移的來源、類型以及這些觀念的重要性之後，在下一篇文章將接著討論，如何判斷概念飄移是否存在，或者換句話說，如何測量概念飄移？</p>
+<hr>
+<p>參考資料：</p>
+<ol>
+<li>
+<p>Gama, J., Žliobaitė, I., Bifet, A., Pechenizkiy, M., &amp; Bouchachia, A. (2014). A survey on concept drift adaptation. <em>ACM Computing Surveys (CSUR)</em>, <em>46</em>(4), 1-37.</p>
+</li>
+<li>
+<p>Lu, J., Liu, A., Dong, F., Gu, F., Gama, J., &amp; Zhang, G. (2018). Learning under concept
+drift: A review. <em>IEEE Transactions on Knowledge and Data Engineering</em>, <em>31</em>(12),
+2346-2363.</p>
+</li>
+</ol>
+<hr>
+<p>如果你對這篇文章的內容有任何的想法或者指教，都歡迎來信和我討論~</p>
+<p>下集待續：資料的滄海桑田 (II) - 概念飄移的測量</p>
+
+
+  </div>
+
+  <footer class="post-footer">
+    <ul class="post-tags">
+      <li><a href="https://boruyang.github.io/tags/concept-drift/">concept drift</a></li>
+    </ul>
+
+
+<div class="share-buttons">
+    <a target="_blank" rel="noopener noreferrer" aria-label="share 資料的滄海桑田 (I) - 概念飄移的來源與類型 on twitter"
+        href="https://twitter.com/intent/tweet/?text=%e8%b3%87%e6%96%99%e7%9a%84%e6%bb%84%e6%b5%b7%e6%a1%91%e7%94%b0%20%28I%29%20-%20%e6%a6%82%e5%bf%b5%e9%a3%84%e7%a7%bb%e7%9a%84%e4%be%86%e6%ba%90%e8%88%87%e9%a1%9e%e5%9e%8b&amp;url=https%3a%2f%2fboruyang.github.io%2fblogs%2fconcept_drift_01%2f&amp;hashtags=conceptdrift">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-253.927,424.544c135.939,0 210.268,-112.643 210.268,-210.268c0,-3.218 0,-6.437 -0.153,-9.502c14.406,-10.421 26.973,-23.448 36.935,-38.314c-13.18,5.824 -27.433,9.809 -42.452,11.648c15.326,-9.196 26.973,-23.602 32.49,-40.92c-14.252,8.429 -30.038,14.56 -46.896,17.931c-13.487,-14.406 -32.644,-23.295 -53.946,-23.295c-40.767,0 -73.87,33.104 -73.87,73.87c0,5.824 0.613,11.494 1.992,16.858c-61.456,-3.065 -115.862,-32.49 -152.337,-77.241c-6.284,10.881 -9.962,23.601 -9.962,37.088c0,25.594 13.027,48.276 32.95,61.456c-12.107,-0.307 -23.448,-3.678 -33.41,-9.196l0,0.92c0,35.862 25.441,65.594 59.311,72.49c-6.13,1.686 -12.72,2.606 -19.464,2.606c-4.751,0 -9.348,-0.46 -13.946,-1.38c9.349,29.426 36.628,50.728 68.965,51.341c-25.287,19.771 -57.164,31.571 -91.8,31.571c-5.977,0 -11.801,-0.306 -17.625,-1.073c32.337,21.15 71.264,33.41 112.95,33.41Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share 資料的滄海桑田 (I) - 概念飄移的來源與類型 on linkedin"
+        href="https://www.linkedin.com/shareArticle?mini=true&amp;url=https%3a%2f%2fboruyang.github.io%2fblogs%2fconcept_drift_01%2f&amp;title=%e8%b3%87%e6%96%99%e7%9a%84%e6%bb%84%e6%b5%b7%e6%a1%91%e7%94%b0%20%28I%29%20-%20%e6%a6%82%e5%bf%b5%e9%a3%84%e7%a7%bb%e7%9a%84%e4%be%86%e6%ba%90%e8%88%87%e9%a1%9e%e5%9e%8b&amp;summary=%e8%b3%87%e6%96%99%e7%9a%84%e6%bb%84%e6%b5%b7%e6%a1%91%e7%94%b0%20%28I%29%20-%20%e6%a6%82%e5%bf%b5%e9%a3%84%e7%a7%bb%e7%9a%84%e4%be%86%e6%ba%90%e8%88%87%e9%a1%9e%e5%9e%8b&amp;source=https%3a%2f%2fboruyang.github.io%2fblogs%2fconcept_drift_01%2f">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-288.985,423.278l0,-225.717l-75.04,0l0,225.717l75.04,0Zm270.539,0l0,-129.439c0,-69.333 -37.018,-101.586 -86.381,-101.586c-39.804,0 -57.634,21.891 -67.617,37.266l0,-31.958l-75.021,0c0.995,21.181 0,225.717 0,225.717l75.02,0l0,-126.056c0,-6.748 0.486,-13.492 2.474,-18.315c5.414,-13.475 17.767,-27.434 38.494,-27.434c27.135,0 38.007,20.707 38.007,51.037l0,120.768l75.024,0Zm-307.552,-334.556c-25.674,0 -42.448,16.879 -42.448,39.002c0,21.658 16.264,39.002 41.455,39.002l0.484,0c26.165,0 42.452,-17.344 42.452,-39.002c-0.485,-22.092 -16.241,-38.954 -41.943,-39.002Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share 資料的滄海桑田 (I) - 概念飄移的來源與類型 on reddit"
+        href="https://reddit.com/submit?url=https%3a%2f%2fboruyang.github.io%2fblogs%2fconcept_drift_01%2f&title=%e8%b3%87%e6%96%99%e7%9a%84%e6%bb%84%e6%b5%b7%e6%a1%91%e7%94%b0%20%28I%29%20-%20%e6%a6%82%e5%bf%b5%e9%a3%84%e7%a7%bb%e7%9a%84%e4%be%86%e6%ba%90%e8%88%87%e9%a1%9e%e5%9e%8b">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-3.446,265.638c0,-22.964 -18.616,-41.58 -41.58,-41.58c-11.211,0 -21.361,4.457 -28.841,11.666c-28.424,-20.508 -67.586,-33.757 -111.204,-35.278l18.941,-89.121l61.884,13.157c0.756,15.734 13.642,28.29 29.56,28.29c16.407,0 29.706,-13.299 29.706,-29.701c0,-16.403 -13.299,-29.702 -29.706,-29.702c-11.666,0 -21.657,6.792 -26.515,16.578l-69.105,-14.69c-1.922,-0.418 -3.939,-0.042 -5.585,1.036c-1.658,1.073 -2.811,2.761 -3.224,4.686l-21.152,99.438c-44.258,1.228 -84.046,14.494 -112.837,35.232c-7.468,-7.164 -17.589,-11.591 -28.757,-11.591c-22.965,0 -41.585,18.616 -41.585,41.58c0,16.896 10.095,31.41 24.568,37.918c-0.639,4.135 -0.99,8.328 -0.99,12.576c0,63.977 74.469,115.836 166.33,115.836c91.861,0 166.334,-51.859 166.334,-115.836c0,-4.218 -0.347,-8.387 -0.977,-12.493c14.564,-6.47 24.735,-21.034 24.735,-38.001Zm-119.474,108.193c-20.27,20.241 -59.115,21.816 -70.534,21.816c-11.428,0 -50.277,-1.575 -70.522,-21.82c-3.007,-3.008 -3.007,-7.882 0,-10.889c3.003,-2.999 7.882,-3.003 10.885,0c12.777,12.781 40.11,17.317 59.637,17.317c19.522,0 46.86,-4.536 59.657,-17.321c3.016,-2.999 7.886,-2.995 10.885,0.008c3.008,3.011 3.003,7.882 -0.008,10.889Zm-5.23,-48.781c-16.373,0 -29.701,-13.324 -29.701,-29.698c0,-16.381 13.328,-29.714 29.701,-29.714c16.378,0 29.706,13.333 29.706,29.714c0,16.374 -13.328,29.698 -29.706,29.698Zm-160.386,-29.702c0,-16.381 13.328,-29.71 29.714,-29.71c16.369,0 29.689,13.329 29.689,29.71c0,16.373 -13.32,29.693 -29.689,29.693c-16.386,0 -29.714,-13.32 -29.714,-29.693Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share 資料的滄海桑田 (I) - 概念飄移的來源與類型 on facebook"
+        href="https://facebook.com/sharer/sharer.php?u=https%3a%2f%2fboruyang.github.io%2fblogs%2fconcept_drift_01%2f">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-106.468,0l0,-192.915l66.6,0l12.672,-82.621l-79.272,0l0,-53.617c0,-22.603 11.073,-44.636 46.58,-44.636l36.042,0l0,-70.34c0,0 -32.71,-5.582 -63.982,-5.582c-65.288,0 -107.96,39.569 -107.96,111.204l0,62.971l-72.573,0l0,82.621l72.573,0l0,192.915l-191.104,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share 資料的滄海桑田 (I) - 概念飄移的來源與類型 on whatsapp"
+        href="https://api.whatsapp.com/send?text=%e8%b3%87%e6%96%99%e7%9a%84%e6%bb%84%e6%b5%b7%e6%a1%91%e7%94%b0%20%28I%29%20-%20%e6%a6%82%e5%bf%b5%e9%a3%84%e7%a7%bb%e7%9a%84%e4%be%86%e6%ba%90%e8%88%87%e9%a1%9e%e5%9e%8b%20-%20https%3a%2f%2fboruyang.github.io%2fblogs%2fconcept_drift_01%2f">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-58.673,127.703c-33.842,-33.881 -78.847,-52.548 -126.798,-52.568c-98.799,0 -179.21,80.405 -179.249,179.234c-0.013,31.593 8.241,62.428 23.927,89.612l-25.429,92.884l95.021,-24.925c26.181,14.28 55.659,21.807 85.658,21.816l0.074,0c98.789,0 179.206,-80.413 179.247,-179.243c0.018,-47.895 -18.61,-92.93 -52.451,-126.81Zm-126.797,275.782l-0.06,0c-26.734,-0.01 -52.954,-7.193 -75.828,-20.767l-5.441,-3.229l-56.386,14.792l15.05,-54.977l-3.542,-5.637c-14.913,-23.72 -22.791,-51.136 -22.779,-79.287c0.033,-82.142 66.867,-148.971 149.046,-148.971c39.793,0.014 77.199,15.531 105.329,43.692c28.128,28.16 43.609,65.592 43.594,105.4c-0.034,82.149 -66.866,148.983 -148.983,148.984Zm81.721,-111.581c-4.479,-2.242 -26.499,-13.075 -30.604,-14.571c-4.105,-1.495 -7.091,-2.241 -10.077,2.241c-2.986,4.483 -11.569,14.572 -14.182,17.562c-2.612,2.988 -5.225,3.364 -9.703,1.12c-4.479,-2.241 -18.91,-6.97 -36.017,-22.23c-13.314,-11.876 -22.304,-26.542 -24.916,-31.026c-2.612,-4.484 -0.279,-6.908 1.963,-9.14c2.016,-2.007 4.48,-5.232 6.719,-7.847c2.24,-2.615 2.986,-4.484 4.479,-7.472c1.493,-2.99 0.747,-5.604 -0.374,-7.846c-1.119,-2.241 -10.077,-24.288 -13.809,-33.256c-3.635,-8.733 -7.327,-7.55 -10.077,-7.688c-2.609,-0.13 -5.598,-0.158 -8.583,-0.158c-2.986,0 -7.839,1.121 -11.944,5.604c-4.105,4.484 -15.675,15.32 -15.675,37.364c0,22.046 16.048,43.342 18.287,46.332c2.24,2.99 31.582,48.227 76.511,67.627c10.685,4.615 19.028,7.371 25.533,9.434c10.728,3.41 20.492,2.929 28.209,1.775c8.605,-1.285 26.499,-10.833 30.231,-21.295c3.732,-10.464 3.732,-19.431 2.612,-21.298c-1.119,-1.869 -4.105,-2.99 -8.583,-5.232Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share 資料的滄海桑田 (I) - 概念飄移的來源與類型 on telegram"
+        href="https://telegram.me/share/url?text=%e8%b3%87%e6%96%99%e7%9a%84%e6%bb%84%e6%b5%b7%e6%a1%91%e7%94%b0%20%28I%29%20-%20%e6%a6%82%e5%bf%b5%e9%a3%84%e7%a7%bb%e7%9a%84%e4%be%86%e6%ba%90%e8%88%87%e9%a1%9e%e5%9e%8b&amp;url=https%3a%2f%2fboruyang.github.io%2fblogs%2fconcept_drift_01%2f">
+        <svg version="1.1" xml:space="preserve" viewBox="2 2 28 28" height="30px" width="30px" fill="currentColor">
+            <path
+                d="M26.49,29.86H5.5a3.37,3.37,0,0,1-2.47-1,3.35,3.35,0,0,1-1-2.47V5.48A3.36,3.36,0,0,1,3,3,3.37,3.37,0,0,1,5.5,2h21A3.38,3.38,0,0,1,29,3a3.36,3.36,0,0,1,1,2.46V26.37a3.35,3.35,0,0,1-1,2.47A3.38,3.38,0,0,1,26.49,29.86Zm-5.38-6.71a.79.79,0,0,0,.85-.66L24.73,9.24a.55.55,0,0,0-.18-.46.62.62,0,0,0-.41-.17q-.08,0-16.53,6.11a.59.59,0,0,0-.41.59.57.57,0,0,0,.43.52l4,1.24,1.61,4.83a.62.62,0,0,0,.63.43.56.56,0,0,0,.4-.17L16.54,20l4.09,3A.9.9,0,0,0,21.11,23.15ZM13.8,20.71l-1.21-4q8.72-5.55,8.78-5.55c.15,0,.23,0,.23.16a.18.18,0,0,1,0,.06s-2.51,2.3-7.52,6.8Z" />
+        </svg>
+    </a>
+</div>
+  </footer>
+</article>
+    </main>
+    
+<footer class="footer">
+    <span>&copy; 2023 <a href="https://boruyang.github.io/">Boru Yang - About Data Science</a></span>
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://github.com/adityatelange/hugo-PaperMod/" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)" class="top-link" id="top-link" accesskey="g">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+        <path d="M12 6H0l6-6z" />
+    </svg>
+</a>
+
+<script>
+    let menu = document.getElementById('menu')
+    if (menu) {
+        menu.scrollLeft = localStorage.getItem("menu-scroll-position");
+        menu.onscroll = function () {
+            localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+        }
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    document.querySelectorAll('pre > code').forEach((codeblock) => {
+        const container = codeblock.parentNode.parentNode;
+
+        const copybutton = document.createElement('button');
+        copybutton.classList.add('copy-code');
+        copybutton.innerHTML = 'copy';
+
+        function copyingDone() {
+            copybutton.innerHTML = 'copied!';
+            setTimeout(() => {
+                copybutton.innerHTML = 'copy';
+            }, 2000);
+        }
+
+        copybutton.addEventListener('click', (cb) => {
+            if ('clipboard' in navigator) {
+                navigator.clipboard.writeText(codeblock.textContent);
+                copyingDone();
+                return;
+            }
+
+            const range = document.createRange();
+            range.selectNodeContents(codeblock);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            try {
+                document.execCommand('copy');
+                copyingDone();
+            } catch (e) { };
+            selection.removeRange(range);
+        });
+
+        if (container.classList.contains("highlight")) {
+            container.appendChild(copybutton);
+        } else if (container.parentNode.firstChild == container) {
+            
+        } else if (codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.nodeName == "TABLE") {
+            
+            codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.appendChild(copybutton);
+        } else {
+            
+            codeblock.parentNode.appendChild(copybutton);
+        }
+    });
+</script>
+</body>
+
+</html>
